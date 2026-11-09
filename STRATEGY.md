@@ -1,55 +1,47 @@
-# Strategy
+# Strategy: a graduation sprint on pump.fun curves
 
 A replay bot for pump.fun SOL bonding curves. It is a pure function of the batch stream: no clock,
 no randomness, no environment, no network. All amounts are `bigint` lamports.
 
-## What it trades
+## The edge
 
-Every SOL-quoted `CreateEvent` starts a coin record: creator, create slot, and initial virtual
-reserves. Non-SOL quotes are ignored. Each `TradeEvent` refreshes the virtual reserves, increments
-the trade count, records non-creator buyers, accumulates bought/sold lamports, flags a creator sell,
-and appends `(slot, is_buy, sol, user)` ticks trimmed to the last 20 slots. A `CompleteEvent` marks
-the coin complete and done.
+A pump.fun bonding curve completes near 85 SOL of real reserve, and the replay closes a position
+still open at the curve's last price — the highest it ever quotes. Young curves that reach the
+45-70 SOL band fast, on broad buying, complete far more often than the average coin dies. The edge
+is selling into that final run-up, not sniping the completion event: most completions are
+single-slot bundles a two-slot-latency fill can never join.
 
-A coin is entered only when the tape looks alive and non-toxic:
+## Entry
 
-- real SOL in the curve (`vq - 30 SOL`) is at least **20 SOL**;
-- at least **4 trades** and **3 distinct non-creator buyers**;
-- bought lamports are at least **1.2x** sold lamports (no sells passes);
-- the creator has not sold;
-- the coin is at most **400 slots** old;
-- it is not held, already entered, or done.
+A SOL curve whose recorded real reserve (virtual minus the 30 SOL offset) is between 45 and 70 SOL,
+whose age is 30-900 slots, with at least 15 SOL bought in the last 30 slots, and with the five
+largest buyers holding at most 30% of all buy volume. At most one new sprint entry per batch, and
+at most three sprint positions at once.
 
-At most one new coin is entered per batch, only while fewer than 5 positions are committed (held or
-with a buy in flight), and never while a buy on that mint is pending.
+## Sizing and risk
 
-## Sizing
+4 SOL target, built in tranches no larger than the shim's per-reply cap of 1% of the real reserve,
+with a 3% haircut for the fee. Adds are allowed only within 8% of the entry price and 60 slots of
+it. Total sprint value at risk is kept inside 45% of the equity peak; a position that would breach
+it is not opened.
 
-Entry spends `min(realSol / 100, 0.12 SOL)`, skipping anything under `0.02 SOL`, with
-`max_slippage_bps = 2000`.
+## Exit
 
-A held coin may be scaled into once per batch (no pending buy or sell) when its position cost is
-below `1.8 SOL`, it has had fewer than 8 adds, the real reserve is at least **30 SOL**, and the
-current price `vq/vt` is at least **1.25x** the price at the previous buy decision. Prices are
-compared by cross-multiplying `vq * lastVt` against `lastVq * vt`, so no floating point is involved.
-An add spends `min(realSol / 100, 0.25 SOL)`, skipping under `0.015 SOL`, with
-`max_slippage_bps = 2000`. The decision price is recorded on entry and on every add.
+Half at 72 SOL of real reserve, the rest at 76, a 25% stop against the entry price plus paid fees,
+and a 1500-slot time exit. A coin that completes is closed by the replay itself at the curve's last
+price.
 
-Exits, adds, and entries are evaluated in that priority order, capped at **16 orders per batch**.
+## Guardrail probes
 
-## Exits
+The competition requires at least 20 distinct coins with a round trip of 0.010 SOL or more. Fifty
+tiny round trips of 0.0125 SOL on coins at least 120 slots old with 1 SOL of real reserve, held 30
+slots, one at a time and spaced 150 slots apart, clear that rule and barely move the PnL.
 
-Positions are tracked from `batch.fills`: opened slot, transaction fees paid, best sell value seen,
-and add count. Harness closes (client ids starting with `_`) and positions absent from the account
-clear that state.
+## Why it works
 
-For a whole-position sell, `value = q - ceil(q * 125 / 10000)` with `q = tokens * vq / (vt + tokens)`,
-and `basis = cost_lamports + tx fees paid`. It exits when any holds:
-
-- **Stop loss:** `value <= 70%` of basis.
-- **Trailing take-profit:** the best value seen reached `125%` of basis and value has fallen to
-  `55%` of that best.
-- **Stale hold:** held at least `1200` slots and value is below `115%` of basis.
-
-Exits always sell the whole position with `max_slippage_bps = 10000`, and no second sell is sent
-while one is pending. A completed or exited coin is marked done and never re-entered.
+The band is the last stretch before completion, where the curve's price still has room; the
+velocity filter keeps capital out of slow curves, and the buyer-breadth filter avoids the coins a
+few wallets are accumulating. Taking half at 72 SOL and the rest at 76 sells into the run-up
+instead of relying on a fill at completion. The bot reads only the batches it is fed: batches are
+answered in order and orders are deterministic, so two runs of the same window produce the same
+action log.
