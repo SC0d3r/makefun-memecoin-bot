@@ -203,7 +203,7 @@ function step(state: BotState, batch: Batch): OrderInput[] {
       if (value * BPS <= basis * 7_000n) exit = true;
       else if (p.best * 1_000n >= basis * 1_250n && value * 100n <= p.best * 55n) exit = true;
     }
-    if (state.slot - p.openedSlot >= 1_200 && value * 100n < basis * 115n) exit = true;
+    if (state.slot - p.openedSlot >= 600 && value * 100n < basis * 115n) exit = true;
     if (!exit) continue;
     orders.push({ side: 'sell', mint, token_amount: holding.token_amount, max_slippage_bps: 10_000 });
     selling.add(mint);
