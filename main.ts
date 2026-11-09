@@ -225,7 +225,7 @@ function step(state: BotState, batch: Batch): OrderInput[] {
     if (r === null) continue;
     const realSol = r.vq - VIRTUAL_OFFSET;
     if (realSol < 30n * SOL) continue;
-    const isLate = realSol >= 60n * SOL;
+    const isLate = realSol >= 50n * SOL;
     if (isLate && p.lateAdds >= 1) continue;
     let amount: bigint;
     if (isLate) {
@@ -241,7 +241,7 @@ function step(state: BotState, batch: Batch): OrderInput[] {
       if (trades < 150 || buyers.size < 80) continue;
       if (c.sold > 0n && c.bought * 1000n > c.sold * 1850n) continue;
       if (!(r.vq * c.lastBuyVt >= c.lastBuyVq * r.vt)) continue;
-      amount = min(realSol / 100n, 600_000_000n);
+      amount = min(realSol / 100n, 500_000_000n);
       if (amount < 10_000_000n) continue;
       p.lateAdds += 1;
     } else {
