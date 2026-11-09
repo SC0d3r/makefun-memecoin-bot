@@ -20,7 +20,7 @@ const BPS = 10_000n;
 /** The reply cap this strategy enforces on itself. */
 const MAX_ORDERS = 16;
 /** Recent-trade ticks kept per coin, in slots. */
-const RECENT_WINDOW = 20;
+const RECENT_WINDOW = 200;
 /** Cap on the probe buy for a new position: 0.03 SOL. */
 const ENTRY_PROBE_CAP = 30_000_000n;
 
@@ -60,6 +60,7 @@ interface PosState {
   txPaid: bigint;
   best: bigint;
   adds: number;
+  lateAdds: number;
 }
 
 /** What selling `tokens` against (vq, vt) pays after curve fees: q - ceil(q*FEE_BPS/BPS). */
@@ -149,7 +150,7 @@ function readFills(state: BotState, batch: Batch): void {
     }
     let p = pos.get(f.mint);
     if (f.side === 'buy' && f.status === 'filled' && p === undefined) {
-      p = { openedSlot: f.slot, txPaid: 0n, best: 0n, adds: 0 };
+      p = { openedSlot: f.slot, txPaid: 0n, best: 0n, adds: 0, lateAdds: 0 };
       pos.set(f.mint, p);
     }
     if (p !== undefined && f.status !== 'rejected') p.txPaid += BigInt(f.tx_fee_lamports);
@@ -191,7 +192,7 @@ function step(state: BotState, batch: Batch): OrderInput[] {
     if (r === null) continue;
     let p = pos.get(mint);
     if (p === undefined) {
-      p = { openedSlot: state.slot, txPaid: 0n, best: 0n, adds: 0 };
+      p = { openedSlot: state.slot, txPaid: 0n, best: 0n, adds: 0, lateAdds: 0 };
       pos.set(mint, p);
     }
     const value = sellValue(holding.token_amount, r.vq, r.vt);
@@ -224,10 +225,31 @@ function step(state: BotState, batch: Batch): OrderInput[] {
     if (r === null) continue;
     const realSol = r.vq - VIRTUAL_OFFSET;
     if (realSol < 30n * SOL) continue;
-    // price now >= 1.25 * price at the last buy: vq/vt >= 1.25 * lastVq/lastVt (cross-multiplied).
-    if (!(r.vq * c.lastBuyVt * 4n >= c.lastBuyVq * r.vt * 5n)) continue;
-    const amount = min(realSol / 100n, 300_000_000n);
-    if (amount < 10_000_000n) continue;
+    const isLate = realSol >= 60n * SOL;
+    if (isLate && p.lateAdds >= 1) continue;
+    let amount: bigint;
+    if (isLate) {
+      // Late add: only on a coin still trading hard this close to graduation.
+      const since = state.slot - 200;
+      let trades = 0;
+      const buyers = new Set<Pubkey>();
+      for (const tk of c.recent) {
+        if (tk.slot < since) continue;
+        trades += 1;
+        if (tk.isBuy) buyers.add(tk.user);
+      }
+      if (trades < 150 || buyers.size < 80) continue;
+      if (c.sold > 0n && c.bought * 1000n > c.sold * 1850n) continue;
+      if (!(r.vq * c.lastBuyVt >= c.lastBuyVq * r.vt)) continue;
+      amount = min(realSol / 100n, 600_000_000n);
+      if (amount < 10_000_000n) continue;
+      p.lateAdds += 1;
+    } else {
+      // price now >= 1.25 * price at the last buy: vq/vt >= 1.25 * lastVq/lastVt (cross-multiplied).
+      if (!(r.vq * c.lastBuyVt * 4n >= c.lastBuyVq * r.vt * 5n)) continue;
+      amount = min(realSol / 100n, 100_000_000n);
+      if (amount < 10_000_000n) continue;
+    }
     orders.push({ side: 'buy', mint, quote_lamports: amount, max_slippage_bps: 2_000 });
     p.adds += 1;
     c.lastBuyVq = r.vq;
