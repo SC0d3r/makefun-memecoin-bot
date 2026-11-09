@@ -245,10 +245,8 @@ function step(state: BotState, batch: Batch): OrderInput[] {
       if (amount < 10_000_000n) continue;
       p.lateAdds += 1;
     } else {
-      // price now >= 1.25 * price at the last buy: vq/vt >= 1.25 * lastVq/lastVt (cross-multiplied).
-      if (!(r.vq * c.lastBuyVt * 4n >= c.lastBuyVq * r.vt * 5n)) continue;
-      amount = min(realSol / 100n, 100_000_000n);
-      if (amount < 10_000_000n) continue;
+      // Early adds are off: wait for the one high-conviction late add above.
+      continue;
     }
     orders.push({ side: 'buy', mint, quote_lamports: amount, max_slippage_bps: 2_000 });
     p.adds += 1;
