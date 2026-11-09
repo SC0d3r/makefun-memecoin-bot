@@ -21,6 +21,8 @@ const BPS = 10_000n;
 const MAX_ORDERS = 16;
 /** Recent-trade ticks kept per coin, in slots. */
 const RECENT_WINDOW = 20;
+/** Cap on the probe buy for a new position: 0.03 SOL. */
+const ENTRY_PROBE_CAP = 30_000_000n;
 
 interface Tick {
   slot: number;
@@ -257,7 +259,7 @@ function step(state: BotState, batch: Batch): OrderInput[] {
         c.done = true;
         continue;
       }
-      const amount = min(realSol / 100n, 30_000_000n);
+      const amount = min(realSol / 100n, ENTRY_PROBE_CAP);
       if (amount < 20_000_000n) continue;
       orders.push({ side: 'buy', mint: c.mint, quote_lamports: amount, max_slippage_bps: 2_000 });
       c.entered = true;
