@@ -217,15 +217,15 @@ function step(state: BotState, batch: Batch): OrderInput[] {
     if (c === undefined || c.complete) continue;
     const p = pos.get(mint);
     if (p === undefined || p.adds >= 8) continue;
-    if (holding.cost_lamports >= 1_800_000_000n) continue;
+    if (holding.cost_lamports >= 1_200_000_000n) continue;
     const r = reserves(mint);
     if (r === null) continue;
     const realSol = r.vq - VIRTUAL_OFFSET;
-    if (realSol < 30n * SOL) continue;
+    if (realSol < 32n * SOL) continue;
     // price now >= 1.25 * price at the last buy: vq/vt >= 1.25 * lastVq/lastVt (cross-multiplied).
-    if (!(r.vq * c.lastBuyVt * 4n >= c.lastBuyVq * r.vt * 5n)) continue;
-    const amount = min(realSol / 100n, 250_000_000n);
-    if (amount < 15_000_000n) continue;
+    if (!(r.vq * c.lastBuyVt * 20n >= c.lastBuyVq * r.vt * 27n)) continue;
+    const amount = min(realSol / 100n, 150_000_000n);
+    if (amount < 10_000_000n) continue;
     orders.push({ side: 'buy', mint, quote_lamports: amount, max_slippage_bps: 2_000 });
     p.adds += 1;
     c.lastBuyVq = r.vq;
@@ -257,7 +257,7 @@ function step(state: BotState, batch: Batch): OrderInput[] {
         c.done = true;
         continue;
       }
-      const amount = min(realSol / 100n, 120_000_000n);
+      const amount = min(realSol / 100n, 30_000_000n);
       if (amount < 20_000_000n) continue;
       orders.push({ side: 'buy', mint: c.mint, quote_lamports: amount, max_slippage_bps: 2_000 });
       c.entered = true;
